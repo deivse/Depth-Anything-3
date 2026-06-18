@@ -277,7 +277,8 @@ class DepthAnything3Net(nn.Module):
             opacities=map_pdf_to_opacity(densities),
             raw_gaussians=raw_gaussians,
             image_shape=(H, W),
-            gt_extrinsics=gt_extr,
+            # NOTE(deivse): We disable this because we already do the alignment in api.py using the non-normalized gt extrinsics.
+            gt_extrinsics=None, 
         )
         output.gaussians = gs_world
 

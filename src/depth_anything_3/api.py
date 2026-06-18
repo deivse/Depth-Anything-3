@@ -32,7 +32,8 @@ from depth_anything_3.cfg import create_object, load_config
 from depth_anything_3.registry import MODEL_REGISTRY
 from depth_anything_3.specs import Prediction
 from depth_anything_3.utils.export import export
-from depth_anything_3.utils.geometry import affine_inverse
+from depth_anything_3.utils.sh_helpers import rotate_sh
+from depth_anything_3.utils.geometry import affine_inverse, mat_to_quat, compose_quaternions
 from depth_anything_3.utils.io.input_processor import InputProcessor
 from depth_anything_3.utils.io.output_processor import OutputProcessor
 from depth_anything_3.utils.logger import logger
@@ -43,7 +44,6 @@ torch.backends.cudnn.benchmark = False
 
 SAFETENSORS_NAME = "model.safetensors"
 CONFIG_NAME = "config.json"
-
 
 class DepthAnything3(nn.Module, PyTorchModelHubMixin):
     """
@@ -350,7 +350,7 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         if extrinsics is None:
             return prediction
         prediction.intrinsics = intrinsics.numpy()
-        _, _, scale, aligned_extrinsics = align_poses_umeyama(
+        r, t, scale, aligned_extrinsics = align_poses_umeyama(
             prediction.extrinsics,
             extrinsics.numpy(),
             ransac=len(extrinsics) >= ransac_view_thresh,
@@ -362,6 +362,22 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
             prediction.depth /= scale
         else:
             prediction.extrinsics = aligned_extrinsics
+
+        if prediction.gaussians is not None:
+            g = prediction.gaussians
+            r = torch.from_numpy(r).float().to(g.means.device)
+            t = torch.from_numpy(t).float().to(g.means.device)
+            g.means = (g.means - t) @ (1 / scale * r)
+
+            g.scales = g.scales / scale
+
+            rot_as_quat_xyzw = mat_to_quat(r.T)
+            # convert to xyzw order used for legacy reasons
+            old_rots_xyzw = g.rotations[..., [1, 2, 3, 0]]
+            new_rots_xyzw = compose_quaternions(rot_as_quat_xyzw, old_rots_xyzw)
+            g.rotations = new_rots_xyzw[..., [3, 0, 1, 2]]  # convert back to wxyz order
+            g.harmonics = rotate_sh(g.harmonics, r.T)
+
         return prediction
 
     def _run_model_forward(

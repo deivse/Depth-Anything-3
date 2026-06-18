@@ -185,6 +185,18 @@ def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
 
     return out
 
+def compose_quaternions(q1, q2) -> torch.Tensor:
+    """Quaternion multiplication. q1 and q2 are both in XYZW order (scalar last)."""
+    q1, q2 = torch.broadcast_tensors(q1, q2)
+    return torch.stack(
+        [
+            q1[..., 0] * q2[..., 3] + q1[..., 3] * q2[..., 0] + q1[..., 1] * q2[..., 2] - q1[..., 2] * q2[..., 1],
+            q1[..., 3] * q2[..., 1] - q1[..., 0] * q2[..., 2] + q1[..., 1] * q2[..., 3] + q1[..., 2] * q2[..., 0],
+            q1[..., 3] * q2[..., 2] + q1[..., 0] * q2[..., 1] - q1[..., 1] * q2[..., 0] + q1[..., 2] * q2[..., 3],
+            q1[..., 3] * q2[..., 3] - q1[..., 0] * q2[..., 0] - q1[..., 1] * q2[..., 1] - q1[..., 2] * q2[..., 2],
+        ],
+        dim=-1,
+    )
 
 def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
     """
